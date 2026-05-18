@@ -58,7 +58,7 @@ Painel Superior (Gráfico Epidêmico Principal):
 Painel Inferior (Rodapé de Monitoramento Operacional):
 - Taxa de Ataque Dinâmica: Calculada em tempo real com base no tamanho estimado das respectivas populações (Urbana: 220.367 hab. | Indígena: 23.000 hab.)
 - Totalização por Integração: O número final de casos estimados para todo o ano é calculado via integração numérica trapezoidal da curva projetada (np.trapezoid ou np.trapz).
-- Janela Temporal do Surto: Cálculo automatizado das semanas de início, duração e fim do surto utilizando um limiar de corte de 5% da cauda ($\text{LIMIAR\_SURTO} = 0.05$).
+- Janela Temporal do Surto: Cálculo automatizado das semanas de início, duração e fim do surto utilizando um limiar de corte de 5% da cauda.
 
 #### Indicadores em Box (Caixas de Resumo)
 
