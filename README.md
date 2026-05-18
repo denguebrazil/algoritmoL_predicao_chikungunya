@@ -1,144 +1,64 @@
-# Predição de Casos de Chikungunya
+#### Algoritmo L: Análise Preditiva e Modelagem Epidemiológica de Chikungunya
 
-## 📋 Descrição Resumida
-
-Este repositório contém uma análise preditiva completa de casos de Chikungunya no município de Dourados, Mato Grosso do Sul. O objetivo é explorar, tratar e modelar dados epidemiológicos de casos de Chikungunya, construindo modelos estatísticos capazes de realizar previsões em horizonte de curto e médio prazo, auxiliando ações de vigilância em saúde e planejamento de recursos.
-
-Os dados são provenientes do SINAN (Sistema de Informação de Agravos de Notificação) e cobrem casos notificados em áreas urbanas, indígenas e totais do município.
+Este repositório contém o Algoritmo L, uma ferramenta desenvolvida em Python (Jupyter Notebook) focada no processamento, correção por atraso de notificação (Nowcasting), cálculo de transmissibilidade em tempo real ($R_t$) e modelagem preditiva de surtos de Chikungunya. O algoritmo foi calibrado e validado utilizando dados reais do SINAN para o município de Dourados/MS, referente ao ano de 2026.
 
 ---
 
-## 📁 Estrutura do Repositório
+#### Pipeline
 
-| Arquivo | Descrição |
-|---------|----------|
-| `analise_preditiva_chik.ipynb` | Notebook principal com toda a análise preditiva |
-| `README.md` | Documentação do projeto |
+[Dados Brutos SINAN] ➔ [Filtros de Agravo/Data] ➔ [Estratificação População]
+                                                          │
+[Projeção Gaussiana] ┪ [Estimação de Rt] ┫ [Nowcasting Corrigido (SE Aberta)]
 
----
+- Saneamento e Filtragem de Agravos: Isolamento das notificações de Chikungunya eliminando falsos positivos, linhas vazias de semanas epidemiológicas e diagnósticos cruzados (exclusão intencional de registros de Dengue e casos Descartados).
 
-## 🔧 Funcionalidades Implementadas
+- Estratificação Étnico-Demográfica: Separação das séries temporais entre população Urbana (Não Indígena) e População Indígena, respeitando as dinâmicas de transmissão e as diferenças logísticas de notificação de cada localidade.
 
-### 1. Importação e Configuração de Bibliotecas
+- Nowcasting Empírico: Correção matemática em tempo real para mitigar o impacto do atraso de digitação na Semana Epidemiológica (SE) em aberto e semanas imediatamente anteriores.
 
-O código inicia importando as bibliotecas essenciais para análise de dados e visualização:
+- Cálculo do $R_t$ (Transmissibilidade): Estimação do número de reprodução efetivo com base em regressão log-linear local.
 
-- **pandas**: Manipulação e análise de dados tabulares
-- **numpy**: Operações numéricas e arrays
-- **matplotlib**: Criação de gráficos e visualizações
-- **seaborn**: Estilização avançada de gráficos estatísticos
-- **scipy.optimize.curve_fit**: Ajuste de curvas não-lineares
-- **scipy.interpolate**: Interpolação de dados
+- Ajuste de Curva Preditiva (Curve Fitting): Modelagem não linear via função Gaussiana para projetar a data do pico, volume crítico de casos por semana e a duração estimada do surto.
 
-As configurações de visualização incluem temas escuros, fontes personalizadas e paletas de cores específicas para representar as diferentes áreas (urbana, indígena, total).
+#### Nuances e Metodologias Matemáticas
 
----
+1. Nowcasting Dinâmico (Correção de Atraso): As notificações enviadas ao SINAN sofrem atrasos crônicos de digitação. Para evitar o efeito visual de "falsa queda" na semana atual (SE em aberto), o algoritmo calcula a fração transcorrida da semana (fracao_semana) e aplica um fator multiplicador empírico combinado com um teto de segurança (cap) para evitar distorções.
 
-### 2. Carregamento dos Dados
+Tabela de Referência Operacional (FATOR_ATRASO_SINAN):
+- Urbana (Atraso logístico menor ~5 dias): Fator 1.20
+- Indígena (Atraso logístico maior ~10 dias): Fator 1.45
 
-Os dados são carregados a partir de arquivos Excel do SINAN localizados em um diretório específico do sistema. O processo inclui:
+2. Estimação do Número de Reprodução Efetivo ($R_t$): Baseado na metodologia clássica de Wallinga & Lipsitch (2007), o algoritmo isola os casos corrigidos em uma janela móvel de 4 semanas (excluindo a semana em aberto para manter a estabilidade). Aplica-se uma regressão linear sobre o logaritmo dos casos para extrair a taxa de crescimento instantânea ($r$).
 
-- Leitura de múltiplas planilhas Excel do diretório `C:/Users/dengu/OneDrive/Documentos/DENGUE/DADOS/SINAN/Dourados.xlsx`
-- Criação de um dicionário contendo os dados por área (urbana, indígena, total)
-- Identificação automática de intervalos de datas para cada conjunto de dados
-- Extração da coluna `dt_notific` (data de notificação) como série temporal principal
+O $R_t$ é calculado exponenciando a taxa com base no Intervalo Serial ($T_s$) da Chikungunya, estimado na literatura em 1 semana ($1.0$).
 
----
+#### Classificação de Risco
+- $R_t > 1.2$: Alerta Máximo (ALTA TRANSMISSÃO)
+- $1.0 < R_t \le 1.2$: Transmissão Ativa (EM CRESCIMENTO)
+- $0.8 \le R_t \le 1.0$: Platô de Transmissão (ESTABILIDADE)
+- $R_t < 0.8$: Controle de Surto (DESACELERAÇÃO)
 
-### 3. Nowcasting (Correção de Subnotificação)
+3. Modelo Preditivo Gaussiano de Surto: para prever o comportamento futuro da curva, o código utiliza o método dos mínimos quadrados não-lineares (scipy.optimize.curve_fit) parametrizando uma função matemática Gaussiana
 
-O nowcasting é uma técnica estatística para corrigir o viés de subnotificação nos dados mais recentes. Como os casos demoram a ser notificados, os últimos dias/semanas parecem ter menos casos do que realmente ocorreram.
+Lógica Adaptativa de Fase (Nuance Crítica do Código): A grande inteligência do script reside em identificar a fase epidêmica atual para condicionar as fronteiras (bounds) do ajuste.
 
-**Metodologia implementada:**
+- Se em Fase Ascendente: Obriga a amplitude a ser maior que o pico atual observado e projeta o pico para semanas futuras ($SE_{atual}$ até $SE_{atual} + 15$).
 
-1. **Cálculo de atrasos de notificação**: Para cada dia, calcula-se a diferença entre a data de notificação e a data atual
-2. **Matriz de atrasos**: Construção de uma matriz onde cada célula representa o número de casos notificados em cada dia de atraso
-3. **Filtragem**: Apenas os últimos 100 dias de dados são utilizados para estabilidade
-4. **Suavização exponencial**: Aplicação de decaimento exponencial para regularizar as contagens de atraso
-5. **Fatores de correção**: Cálculo de um fator para cada dia que estima quantos casos adicionais devem ser adicionados
-6. **Correção final**: Ajuste das contagens recentes multiplicando pelos fatores de correção
+- Se em Fase Descendente ($R_t < 0.95$): Libera o parâmetro para retroagir cronologicamente (identificando que o pico já passou) e trava a amplitude próxima ao pico histórico consolidado, focando o ajuste em desenhar a cauda de regressão.
 
-Esta etapa é crítica porque sem ela, os modelos preditivos subestimariam significativamente o número real de casos recentes.
+#### Métricas de Saída e Visualização Especializada
+O script gera figuras ricas utilizando matplotlib.gridspec, acoplando gráficos de tendência e um painel analítico de tomada de decisão
 
----
+Painel Superior (Gráfico Epidêmico Principal):
+- Barras Verde-Escuras: Casos consolidados brutos já digitados.
+- Barras VerdeClaras: Projeção de Nowcasting com ganho teórico de atraso.
+- Barra Amarela Destacada: Identificação visual da semana epidemiológica atual em aberto.
+- Linha Tracejada Vermelha: Curva Gaussiana projetada até a SE52 acompanhada de uma banda sombreada (fill_between) que ilustra o intervalo de incerteza do modelo.
 
-### 4. Ajuste de Curva Gaussiana
-
-O modelo principal de predição utiliza o ajuste de uma curva gaussiana (distribuição normal) aos dados epidemiológicos. A gaussiana é apropriada porque surtos de doenças infecciosas frequentemente seguem um padrão de crescimento e declínio simétrico.
-
-**Função gaussiana utilizada:**
-
-```
-f(t) = base + amp * exp(-(t - centro)^2 / (2 * sigma^2))
-```
-
-Onde:
-- **base**: Linha de base de casos (valor mínimo)
-- **amp**: Amplitude máxima do pico do surto
-- **centro**: Data do pico máximo de casos
-- **sigma**: Largura do surto (dispersão temporal)
-
-**Processo de ajuste:**
-
-1. Conversão de datas para índices numéricos (dias desde a primeira data)
-2. Definição de limites para os parâmetros (bounds) para garantir ajustes fisicamente plausíveis
-3. Chute inicial (p0) baseado em estatísticas descritivas dos dados
-4. Uso do `curve_fit` com limites restritos para encontrar os parâmetros ótimos
-5. Cálculo da data do pico convertendo o índice numérico de volta para formato de data
-
----
-
-### 5. Projeção e Previsão Futura
-
-O modelo projeta os casos para os próximos 120 dias (aproximadamente 4 meses) a partir da última data disponível.
-
-**Etapas da projeção:**
-
-1. **Criação de datas futuras**: Geração de uma série de datas a partir do dia seguinte à última data conhecida
-2. **Aplicação do modelo gaussiano**: Cálculo dos valores previstos para cada dia futuro
-3. **Projeção até decaimento**: Extensão adicional até que os casos projetados caiam abaixo de 0.5
-4. **Cálculo de datas-chave**:
-   - Data do pico máximo
-   - Data de fim do surto (quando casos < 1)
-   - Dias até o pico
-   - Dias até o fim
-
-**Recomendações automáticas baseadas nos resultados:**
-
-- **Aumentar vigilância**: Quando o pico ainda não foi atingido
-- **Manter ações**: Durante o pico
-- **Monitorar tendência**: Após o pico, durante o declínio
-- **Ações preventivas**: Quando o surto está se encerrando
-
----
-
-### 6. Visualizações e Gráficos
-
-O código gera múltiplas visualizações profissionais para cada área (urbana, indígena, total):
-
-#### Gráfico Principal de Casos vs. Modelo
-
-- **Linha sólida**: Casos observados (dados reais)
-- **Linha pontilhada**: Casos ajustados pelo modelo gaussiano
-- **Barras empilhadas**: Casos previstos para o futuro, coloridos por nível de risco
-  - 🔴 Vermelho: Casos > 100 (alto risco)
-  - 🟠 Laranja: Casos > 50 (risco moderado)
-  - 🟡 Amarelo: Casos > 25 (risco baixo)
-  - 🟢 Verde: Casos <= 25 (risco mínimo)
-- **Linha verde pontilhada**: Indica a data atual
-
-#### Gráfico de Tendência de Casos (Twin Axes)
-
-- **Eixo esquerdo**: Casos diários (barras empilhadas)
-- **Eixo direito**: Média móvel de 7 dias (linha)
-- **Linha vertical tracejada**: Data do pico máximo
-- **Sombreamento vermelho**: Região de incerteza do modelo (±1 desvio padrão)
-
-#### Gráfico de Distribuição dos Casos
-
-- Histograma de frequência dos casos
-- Sobreposição da curva gaussiana ajustada
-- Área sombreada cinza: Distribuição dos dados observados
+Painel Inferior (Rodapé de Monitoramento Operacional):
+- Taxa de Ataque Dinâmica: Calculada em tempo real com base no tamanho estimado das respectivas populações (Urbana: 220.367 hab. | Indígena: 23.000 hab.)
+- Totalização por Integração: O número final de casos estimados para todo o ano é calculado via integração numérica trapezoidal da curva projetada (np.trapezoid ou np.trapz).
+- Janela Temporal do Surto: Cálculo automatizado das semanas de início, duração e fim do surto utilizando um limiar de corte de 5% da cauda ($\text{LIMIAR\_SURTO} = 0.05$).
 
 #### Indicadores em Box (Caixas de Resumo)
 
@@ -154,56 +74,22 @@ Cada gráfico inclui uma caixa com os seguintes indicadores:
 | R² do Modelo | Qualidade do ajuste (R² > 0.9 = excelente) |
 | Recomendação | Sugestão de ação baseada no estágio do surto |
 
----
+#### Tecnologias Utilizadas
+- Python 3.x
+- Pandas & NumPy: Engenharia de atributos, filtros relacionais e manipulação vetorial.
+- SciPy: Otimização não-linear (curve_fit) e estatística inferencial linear (linregress).
+- Matplotlib & Seaborn: Renderização de dashboards gráficos de alta fidelidade visual.
 
-### 7. Análise Estatística Avançada
+#### Como Executar
+Posicione a base de dados do SINAN no mesmo diretório do arquivo: sinan_dourados_base.xlsx.
 
-O notebook inclui cálculos estatísticos sofisticados:
+Execute a esteira completa do notebook analise_preditiva_chik.ipynb.
 
-- **Média móvel**: Suavização de ruído nos dados diários
-- **Desvio padrão**: Medida de variabilidade do modelo
-- **Coeficiente de determinação (R²)**: Avaliação da qualidade do ajuste do modelo
-- **Interpolação**: Preenchimento de valores faltantes usando interpolação quadrática
-- **Máscaras booleanas**: Segmentação inteligente dos dados (observados vs. previstos)
-
----
-
-## 📊 Resultados Esperados
-
-Para cada área analisada (Urbana, Indígena, Total), o modelo fornece:
-
-1. **Curva ajustada**: Representação matemática do comportamento do surto
-2. **Previsão futura**: Estimativa de casos para os próximos meses
-3. **Datas críticas**: Identificação de pico e fim do surto
-4. **Indicadores de qualidade**: R² e outras métricas de desempenho
-5. **Recomendações**: Ações sugeridas para gestores de saúde
-
----
-
-## 🛠️ Requisitos Técnicos
-
-Para executar o notebook localmente, são necessárias as seguintes bibliotecas Python:
-
-```
-pandas
-numpy
-matplotlib
-seaborn
-scipy
-openpyxl  # Para leitura de arquivos Excel
-```
-
----
-
-## 📈 Como Usar
-
-1. Clone o repositório
-2. Instale as dependências listadas acima
-3. Abra o notebook `analise_preditiva_chik.ipynb` no Jupyter ou VS Code
-4. Execute as células em ordem
-5. Analise os gráficos e indicadores gerados
-
----
+Os seguintes arquivos intermediários de auditoria serão gerados automaticamente para conferência:
+- sinan_dourados_notificados.xlsx
+- sinan_dourados_provaveis.xlsx
+- sinan_dourados_urbano.xlsx
+- sinan_dourados_indigena.xlsx
 
 ## ⚠️ Limitações e Considerações
 
@@ -223,16 +109,5 @@ Contribuições são bem-vindas! Sinta-se à vontade para:
 - Adicionar novas funcionalidades
 - Melhorar a documentação
 
----
-
-## 📄 Licença
-
-Este projeto está sob a licença do repositório original. Consulte o arquivo LICENSE para mais detalhes.
-
----
-
-## 📞 Contato
-
 Repositório mantido por: **denguebrazil**
-
 Para questões relacionadas a dados epidemiológicos de Dengue, Zika e Chikungunya no Brasil.
