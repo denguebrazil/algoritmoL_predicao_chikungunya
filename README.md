@@ -1,4 +1,4 @@
-# 🔮 Análise Preditiva de Chikungunya — Nowcasting e Projeção de Surtos
+# Análise de Tendência de Chikungunya
 
 > Modelo epidemiológico para **estimar a tendência futura** de casos de Chikungunya em um município ou estado, corrigindo o atraso de notificação (*nowcasting*), calculando a velocidade de transmissão (Rt) e projetando o comportamento provável do surto nas semanas seguintes.
 
